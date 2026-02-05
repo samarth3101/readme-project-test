@@ -1530,7 +1530,75 @@ events = db.query(Event).offset(skip).limit(20).all()
 
 ---
 
-## 10. Development Phases
+## 10. Recent Bug Fixes & System Improvements
+
+### Date: February 5, 2026
+
+#### Critical Bug Fix: Pydantic Serialization Error in Events API
+
+**Problem Identified:**
+```
+PydanticSerializationError: Unable to serialize unknown type: <class 'app.models.event.Event'>
+```
+
+**Root Cause:**
+The `/events/` endpoint was returning SQLAlchemy ORM objects directly in the response, which FastAPI couldn't serialize. The endpoint returned a dictionary with raw Event model instances in the `events` list.
+
+**Solution Implemented:**
+
+1. **Backend Changes (3 files modified):**
+   - Created `EventsPaginatedResponse` Pydantic schema in `app/schemas/event.py`
+   - Updated `/events/` endpoint response model from `dict` to `EventsPaginatedResponse`
+   - Added model conversion: `EventResponse.model_validate(event)` for each SQLAlchemy object
+   - Proper response structure:
+     ```python
+     {
+       "total": int,
+       "skip": int,
+       "limit": int,
+       "events": List[EventResponse]
+     }
+     ```
+
+2. **Frontend Changes (3 files modified):**
+   - **Dashboard (`dashboard/page.tsx`)**: Updated to extract `events` array from paginated response
+   - **Events Page (`events/page.tsx`)**: Already had fallback handling `data.events || data`
+   - **Attendance Page (`attendance/page.tsx`)**: Added response unwrapping logic
+
+**Technical Details:**
+```python
+# Before (Incorrect)
+@router.get("/", response_model=dict)
+def get_events(...):
+    events = query.all()
+    return {"events": events}  # ❌ SQLAlchemy objects
+
+# After (Correct)
+@router.get("/", response_model=EventsPaginatedResponse)
+def get_events(...):
+    events = query.all()
+    events_response = [EventResponse.model_validate(e) for e in events]
+    return EventsPaginatedResponse(
+        total=total, skip=skip, limit=limit, events=events_response
+    )
+```
+
+**Impact:**
+- ✅ Fixed 500 Internal Server Error on `/events/` endpoint
+- ✅ Proper API response structure with pagination metadata
+- ✅ Type-safe serialization with Pydantic
+- ✅ Consistent API response format across frontend
+- ✅ Better error handling and validation
+
+**Testing Results:**
+- Dashboard loads successfully with event statistics
+- Events page displays all events with filters
+- Attendance page loads event dropdown properly
+- All CRUD operations work correctly
+
+---
+
+## 11. Development Phases
 
 ### Phase 1: Core MVP (Week 1-2)
 - ✅ User authentication (JWT)
@@ -1577,7 +1645,7 @@ events = db.query(Event).offset(skip).limit(20).all()
 
 ---
 
-## 11. Future Enhancements
+## 12. Future Enhancements
 
 ### Short-Term (1-3 Months)
 
@@ -1720,7 +1788,7 @@ Total Lines of Code: ~8,500 (Backend: 4,200 | Frontend: 4,300)
 ---
 
 **Prepared by:** Samarth Patil  
-**Date:** February 4, 2026  
+**Date:** February 5, 2026  
 **Project Status:** Core Complete | AI In Development  
 **License:** MIT (Open Source)
 
